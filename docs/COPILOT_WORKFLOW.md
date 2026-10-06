@@ -19,17 +19,9 @@ Before each task:
 
 ## Preferred prompt style
 
-Use prompts like:
-
-> Read AGENTS.md and docs/CONTRACTS.md. Implement only the `ChatMessage`, `ChatOptions`, `ChatRequest`, and `ChatResponse` Pydantic models. Do not implement the provider adapter, factory, pipeline, or future phases. Add unit tests. Run Ruff and pytest.
-
-Then separately:
-
-> Read AGENTS.md and docs/CONTRACTS.md. Implement the `ChatModel` protocol only. Do not add provider-specific code.
-
-Then:
-
-> Read AGENTS.md, docs/ARCHITECTURE.md, and docs/CONTRACTS.md. Implement `OpenAIResponsesChatModel` as an adapter around the OpenAI Responses API. Keep all OpenAI SDK imports inside infrastructure. Add mocked unit tests.
+Ask for one focused change at a time, for example one capability or one concrete
+integration. See `AGENTS.md` and [ARCHITECTURE.md](ARCHITECTURE.md) for the
+constraints.
 
 ## Anti-pattern prompts
 
@@ -56,10 +48,11 @@ After Copilot changes code, ask:
 3. Did we add a provider-specific field to a generic contract?
 4. Did we add unnecessary inheritance?
 5. Can the application be tested with fakes?
-6. Can a second provider implement the interface without changing the application?
+6. Is Azure AI Search still the sole vector store, with no generic `VectorStore`?
 7. Did the change implement more than the current milestone?
 8. Are tests present?
-9. Is configuration separate from domain models?
+9. Is configuration separate from domain models, and is candidate-specific
+   logic kept out of the generic core?
 10. Did any secret enter source control?
 
 ## Definition of done

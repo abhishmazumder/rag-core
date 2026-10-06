@@ -1,238 +1,116 @@
-# Domain Contracts
+# Contracts
 
-These contracts are the most important LLD boundary in the repository.
+The stable data models and capability contracts of rag-core. For how they fit
+together see [ARCHITECTURE.md](ARCHITECTURE.md). Contracts must not expose Azure
+SDK or model-provider SDK types.
 
-They must remain provider-neutral.
+## Part 1: Generic rag-core contracts
 
-## 1. Chat
-
-### ChatMessage
-
-Represents one logical conversational message.
-
-Fields:
-
-- `role`
-- `content`
-
-Initial roles:
-
-- `system`
-- `user`
-- `assistant`
-
-Do not import provider message classes.
-
-### ChatOptions
-
-Contains only options that are meaningful across providers.
-
-Initial candidates:
-
-- `temperature`
-- `max_output_tokens`
-
-Provider-specific controls do not belong here.
-
-### ChatRequest
-
-Conceptual shape:
+### Embedding
 
 ```text
-ChatRequest
-├── messages: list[ChatMessage]
-└── options: ChatOptions | None
+EmbeddingRequest   texts: list[str]                  (non-empty batch)
+EmbeddingResponse  embeddings: list[list[float]]     (one vector per input)
+EmbeddingModel     embed(EmbeddingRequest) -> EmbeddingResponse
 ```
 
-The model selection should normally be configuration-owned.
+Embedding dimensions come from the configured deployment and must match the vector
+field dimensions of the index.
 
-If per-request model selection is eventually required, it must remain provider-neutral.
-
-### ChatResponse
-
-Conceptual shape:
+### Response generation
 
 ```text
-ChatResponse
-├── content: str
-├── model: str
-└── finish_reason: str | None
+ResponseMessage    role (system | user | assistant), content
+ResponseRequest    messages: list[ResponseMessage]
+ResponseResponse   content: str
+ResponseModel      generate(ResponseRequest) -> ResponseResponse
 ```
 
-Do not expose OpenAI `Response`, Anthropic response objects, or another SDK type.
+The application uses these without assuming OpenAI, GPT, or any particular model
+API. Concrete integrations own the API-specific mapping.
 
-### ChatModel
+### Vector documents
 
-Conceptual contract:
+`VectorDocument[TMetadata]` is the provider-neutral unit of storage:
 
-```python
-generate(request: ChatRequest) -> ChatResponse
-```
+- `id`: stable string ID
+- `text`: the original text
+- `embedding`: `list[float]`
+- `chunk_index`: position of the chunk within its source
+- `metadata`: a Pydantic model chosen by the consuming application
 
-## 2. Embeddings
+It contains no Azure, Foundry, client, or credential types. rag-core does not
+prescribe which metadata fields exist.
 
-### EmbeddingRequest
+### Search
 
 ```text
-EmbeddingRequest
-└── texts: list[str]
+VectorSearchRequest   query_vector, top_k (positive), filters (optional)
+VectorSearchResult    id, text, typed metadata, score
+VectorSearchResponse  results: list[VectorSearchResult]
 ```
 
-Batch support is part of the contract because ingestion commonly embeds many chunks.
+`VectorSearchRequest` is used by vector search only. Keyword, hybrid, and semantic
+search take a text query (and, for hybrid, a query vector) plus `top_k` and
+`filters` directly on `AzureAISearchVectorStore`.
 
-### EmbeddingResponse
+Filters are `dict[str, str]`. In the Azure AI Search implementation each entry
+becomes an exact string-equality OData clause (`field eq 'value'`) with
+apostrophes escaped, so a filter key must name a filterable index field.
+
+### Retrieval and RAG
 
 ```text
-EmbeddingResponse
-├── embeddings: list[list[float]]
-└── model: str
+retrieve(..., method="vector") -> VectorSearchResponse
+RAGResponse[TMetadata]         answer: str, evidence: list[VectorSearchResult]
 ```
 
-The application should not need to know the provider SDK response structure.
+`method` is one of `vector`, `keyword`, `hybrid`, `semantic` (default `vector`).
+Vector and hybrid embed the query; keyword and semantic do not. When retrieval
+finds nothing, the RAG use case returns an explicit insufficient-evidence answer
+without calling the `ResponseModel`.
 
-### EmbeddingModel
+### Vector store
 
-Conceptual contract:
+There is no generic `VectorStore` contract. The concrete
+`AzureAISearchVectorStore` works on an already-provisioned index and does not
+create or update it. Its metadata model must be compatible with the index fields.
 
-```python
-embed(request: EmbeddingRequest) -> EmbeddingResponse
-```
+## Part 2: Example application contracts
 
-## 3. Vector storage and search
+The following belong to the example candidate-document `/api` application and the
+Azure index it uses, not to the generic core.
 
-### VectorDocument
-
-`VectorDocument` represents the data stored in a vector store. It is intended
-to be a generic base that concrete document types can extend. Its common data
-includes:
-
-- `id`
-- `text`
-- `embedding`
-- `metadata`
-
-It is provider-neutral data, not a place for Azure AI Search SDK behavior.
-Concrete document types must be representable by the schema of their intended
-store. The exact mapping and validation mechanism will be designed when the
-document and schema components are implemented.
-
-### VectorStoreSchema
-
-`VectorStoreSchema` describes the storage structure expected by a vector
-store. It may describe document fields, field types, vector field and
-dimensions, searchable/filterable properties, metadata fields, and other
-index-level configuration.
-
-Concrete schemas may extend the schema concept. Schema represents storage
-structure; it is not the runtime store or the stored document.
-
-`VectorDocument`, `VectorStoreSchema`, and `VectorStore` are separate concepts.
-They do not inherit from each other, and no generic type relationship between
-a document and a schema is required at this stage.
-
-### VectorSearchRequest
-
-Initial conceptual fields:
+### Example metadata: `DocumentChunkMetadata`
 
 ```text
-VectorSearchRequest
-├── vector: list[float]
-├── top_k: int
-└── filters: dict[str, str] | None
+source_document_id: str
+source_name: str
+document_type: str
+page_number: int | None = None
+source_url: str | None = None
+candidate_id: str
+document_id: str
 ```
 
-Do not expose Azure `VectorizedQuery`.
+The model currently lives under `domain/models`, but its candidate fields are
+example-specific; a different consumer would define its own metadata model. The
+Azure store flattens metadata into top-level index fields, so the index must define
+matching fields. The current canonical index (`build_azure_search_index`) is the
+concrete representation of this example and adds `id`, `text`, `embedding`, and
+`chunk_index`. See ARCHITECTURE.md for how model and index evolve together.
 
-If hybrid/semantic search becomes part of the generic contract, add explicit capability-oriented fields rather than provider SDK objects.
-
-### VectorSearchResult
-
-Must contain enough information for RAG evidence assembly.
-
-Initial fields should include:
-
-- document/chunk identifier
-- text
-- metadata required for citation
-- retrieval score where available
-
-Scores should be treated as retrieval metadata, not as probabilities.
-
-### VectorSearchResponse
+### Example API models (`api/schemas.py`)
 
 ```text
-VectorSearchResponse
-└── results: list[VectorSearchResult]
+IngestDocumentRequest   candidate_id, text                       (both non-empty)
+IngestDocumentResponse  candidate_id, document_id, chunk_ids
+QueryRequest            query, candidate_id, method="vector", top_k=5 (1..50)
+QueryResponse           query, candidate_id, method, answer, chunks
+QueryChunk              id, text, score, metadata
 ```
 
-### VectorStore
-
-`VectorStore` is the provider-neutral runtime storage contract. Its
-responsibilities may include adding/upserting documents, searching/querying
-vectors, retrieving results, and deleting documents. Exact operations and
-signatures will be designed when the storage contract is implemented.
-
-Conceptual search contract:
-
-```python
-search(request: VectorSearchRequest) -> VectorSearchResponse
-```
-
-Provider-specific SDK types and request construction remain inside the
-infrastructure adapter. Runtime `VectorStore` implementations use a
-provisioned index; they do not create it.
-
-## 4. Index provisioning
-
-Index structure is described by a concrete `VectorStoreSchema`. A separate
-setup/operations script, conceptually `scripts/setup_vector_index.py`, applies
-that schema to the selected provider's index. For Azure AI Search, that script
-owns index provisioning/configuration; the runtime `AzureAISearchVectorStore`
-uses the resulting index.
-
-This separates:
-
-- document data (`VectorDocument`)
-- storage structure (`VectorStoreSchema`)
-- runtime storage operations (`VectorStore`)
-- provisioning operations (`setup_vector_index.py`)
-
-## 5. Evidence
-
-The RAG application should normalize retrieved records into a provider-neutral evidence representation.
-
-A generic evidence object should be able to preserve:
-
-- stable evidence/chunk ID
-- source document ID
-- source document name
-- source URL/reference
-- text
-- metadata
-- retrieval score
-
-Do not introduce BGV-specific fields into this generic model.
-
-## 6. RAG response
-
-The RAG pipeline should return a provider-neutral response containing at minimum:
-
-```text
-RAGResponse
-├── answer
-└── evidence
-```
-
-Citations should be traceable back to the evidence objects.
-
-## 7. Contract design rule
-
-If a new provider requires a field that existing providers do not need, do not immediately add that field to the canonical contract.
-
-Ask:
-
-1. Is this capability common?
-2. Is it required by the application?
-3. Can it be represented without provider-specific semantics?
-
-If not, keep it inside the adapter.
+`IndexSetupResponse`, `IndexClearResponse`, `DeleteDocumentResponse`, and
+`DeleteChunkResponse` are the administrative responses. `QueryMethod` mirrors the
+application's `SearchMethod` values; they are kept separate so the application does
+not import the API layer.

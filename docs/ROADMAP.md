@@ -1,94 +1,42 @@
-# Learning Roadmap
+# Roadmap
 
-This repository is the standalone Vanilla RAG implementation used to learn the RAG foundations that precede framework-based agentic development.
+This repository learns Vanilla RAG mechanics before adding orchestration
+frameworks. The current design is in [ARCHITECTURE.md](ARCHITECTURE.md) and current
+status in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
-## Learning sequence
+## Progression
 
 ```text
-Embeddings
+Typed documents and metadata
    ↓
-VectorDocument
+Azure AI Search index and runtime store
    ↓
-VectorStoreSchema
+Embeddings and retrieval (vector, keyword, hybrid, semantic)
    ↓
-Index provisioning
+Grounded response generation
    ↓
-VectorStore runtime operations
+Example FastAPI application        <- current
    ↓
-Metadata filtering
-   ↓
-Hybrid retrieval
-   ↓
-Semantic reranking
-   ↓
-Context assembly
-   ↓
-Prompt construction
-   ↓
-LLM generation
-   ↓
-Grounded answers
-   ↓
-Citations/evidence
+Real Azure smoke test              <- next
    ↓
 Evaluation
+   ↓
+Hardening and optional extensions
 ```
 
-The project should demonstrate that these mechanisms can be built without LangChain/LangGraph.
+## Future work
 
-## Vector-storage boundaries
-
-Keep the following responsibilities distinct:
-
-- `VectorDocument` is the data to store.
-- `VectorStoreSchema` describes the expected index/storage structure.
-- `VectorStore` is the provider-neutral runtime storage contract.
-- `scripts/setup_vector_index.py` provisions/configures the index separately
-  from runtime store operations.
-
-The initial runtime adapter is `AzureAISearchVectorStore`. Azure SDK mapping
-belongs in infrastructure; the domain/application contracts remain
-provider-neutral.
+- End-to-end smoke test against real Azure resources.
+- Evaluation of retrieval relevance, groundedness, citations, and
+  insufficient-evidence behavior, evaluating retrieval separately from generation.
+- Hardening: observability, retries, timeouts, HTTP error mapping, and a
+  re-ingestion/cleanup policy.
+- Optional: additional Foundry model integrations, OCR and document storage for the
+  example application, and a decision on the default search method.
+- Later, as a separate concern, integrating rag-core into a larger system such as
+  the BGV capstone.
 
 ## Phase boundary
 
-Do not turn this repository into an agent framework.
-
-Later learning phases can introduce:
-
-- LangChain
-- LangGraph
-- agent state
-- tools
-- multi-step orchestration
-
-The Vanilla RAG repository should remain understandable on its own.
-
-## Evidence-first principle
-
-Retrieval is not merely a prelude to generation.
-
-We should be able to inspect:
-
-- what was retrieved
-- why it was eligible
-- metadata/filter scope
-- ranking information
-- what evidence entered the prompt
-- what answer was generated
-
-This makes the system suitable for evaluation and later audit-oriented applications.
-
-## Evaluation principle
-
-A working answer is not sufficient evidence that retrieval is good.
-
-Evaluate retrieval separately from generation.
-
-At minimum, demonstrate:
-
-- relevant evidence is retrieved
-- irrelevant evidence is reduced
-- scope filters work
-- unsupported questions do not receive invented evidence
-- citations point to actual retrieved evidence
+Do not turn this repository into an agent framework. LangChain, LangGraph, agents,
+and other orchestration are not prerequisites for the Vanilla RAG flow.

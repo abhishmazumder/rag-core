@@ -1,131 +1,83 @@
 # Project Setup
 
-## 1. Repository
+How to configure and run the project. For the conceptual design see
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
-The repository is standalone:
+## 1. Python and dependencies
 
-```text
-rag-core/
-```
-
-It is not part of the BGV project.
-
-## 2. Python
-
-Use Python 3.12 or newer.
-
-Check:
+Use Python 3.12 or newer and `uv`.
 
 ```powershell
-python --version
+uv sync
 ```
 
-## 3. Create with uv
+Runtime dependencies: `pydantic`, `pydantic-settings`, `azure-identity`,
+`azure-search-documents`, `openai` (used by the first response and embedding
+integrations), and `fastapi`. Development tools: `pytest`, `pytest-mock`, `httpx`
+(for API tests), and `ruff`. Prefer `uv add` / `uv add --dev` for changes.
 
-From the parent directory:
+## 2. Azure resources
+
+You need:
+
+- an Azure AI Search service
+- an Azure AI Foundry resource with an embedding deployment and a response
+  deployment
+
+## 3. Environment configuration
+
+Copy `.env.example` to `.env` (gitignored). It holds only endpoints and names, never
+credentials:
+
+| Setting | Meaning |
+| --- | --- |
+| `AZURE_SEARCH_ENDPOINT`, `AZURE_SEARCH_INDEX_NAME` | Azure AI Search service and index |
+| `AZURE_AI_FOUNDRY_RESPONSE_ENDPOINT`, `AZURE_AI_FOUNDRY_RESPONSE_MODEL` | response model endpoint and deployment name |
+| `AZURE_AI_FOUNDRY_EMBEDDING_ENDPOINT`, `AZURE_AI_FOUNDRY_EMBEDDING_MODEL` | embedding model endpoint and deployment name |
+| `AZURE_AI_FOUNDRY_EMBEDDING_DIMENSIONS` | vector length returned by the embedding deployment |
+
+Response and embedding endpoints are separate because deployments can expose
+different API surfaces. For the current OpenAI-compatible integrations, use the full
+`/openai/v1/` URL and the deployment name. Set the dimensions from authoritative
+information for your deployment (the example value `1536` matches
+`text-embedding-3-small`); it must equal the real output length because it defines
+the index vector field.
+
+## 4. Authentication
+
+All Azure services use Microsoft Entra ID through `DefaultAzureCredential`. Locally,
+sign in with the Azure CLI (`az login`); deployed workloads can use a managed
+identity. Grant the identity only the roles it needs on the Search and Foundry
+resources (including permission to create indexes for index setup). No API keys are
+used or supported.
+
+## 5. Index setup
+
+Index provisioning is explicit and never happens at startup. With the API running,
+call `POST /admin/index/setup` to create or update the canonical index named by
+`AZURE_SEARCH_INDEX_NAME`, using `AZURE_AI_FOUNDRY_EMBEDDING_DIMENSIONS`. This index
+is the representation used by the example candidate-document API. If you change the
+index fields, change the metadata model to match.
+
+## 6. Running the API
+
+The example API is the FastAPI app produced by `rag_core.api.app.create_app`. Serve
+it with an ASGI server; `uvicorn` is not currently a project dependency, so add it
+(`uv add uvicorn`) if you want to run the API locally:
 
 ```powershell
-uv init rag-core
-cd rag-core
+uv run uvicorn rag_core.api.app:create_app --factory --reload
 ```
 
-If starting from an existing empty repository, initialize it appropriately with uv rather than creating a second project layout.
+Endpoints are listed in ARCHITECTURE.md. Missing configuration yields a 503 from the
+affected endpoint.
 
-Create/use the environment through uv.
-
-## 4. Core dependencies
-
-The initial project needs:
-
-- pydantic
-- pydantic-settings
-- openai
-- azure-search-documents
-- azure-identity
-
-Development dependencies:
-
-- pytest
-- pytest-mock or unittest.mock as appropriate
-- ruff
-
-Prefer `uv add` / `uv add --dev` rather than manually editing dependency versions.
-
-## 4.1 Azure authentication
-
-Azure services use Microsoft Entra ID authentication through
-`DefaultAzureCredential` from `azure-identity`. API keys are not part of this
-project's Azure authentication approach.
-
-`DefaultAzureCredential` uses the available Azure Identity environment,
-development, or managed identity credential. Sign in with an appropriate
-development identity or configure an Azure-hosted identity with the required
-service permissions. Azure SDK clients must receive this credential when they
-are added; credentials do not belong in application or domain code.
-
-## 5. Source layout
-
-Use a `src` layout:
-
-```text
-src/
-└── rag_core/
-```
-
-Tests:
-
-```text
-tests/
-```
-
-## 6. Environment
-
-Create:
-
-```text
-.env
-.env.example
-```
-
-`.env` must be gitignored.
-
-`.env.example` contains Azure service endpoints and deployment/index names,
-with no secrets or API-key settings. Azure authentication is provided by
-Microsoft Entra ID through `DefaultAzureCredential`.
-
-## 6.1 Azure AI Search index setup
-
-Index provisioning is a setup/operations task, separate from runtime
-`VectorStore` behavior. A future script such as
-`scripts/setup_vector_index.py` will apply a concrete `VectorStoreSchema` to
-create or configure the Azure AI Search index. The runtime
-`AzureAISearchVectorStore` will use the provisioned index and will not create
-it. Azure SDK clients used by the setup script or runtime adapter must receive
-`DefaultAzureCredential`; neither path uses API keys.
-
-## 7. Initial configuration categories
-
-Configuration will eventually include:
-
-```text
-LLM provider
-LLM model
-Embedding provider
-Embedding model
-Vector-store provider
-Vector-store/index configuration
-```
-
-Provider-specific settings must remain grouped and clearly named.
-
-## 8. Validation
-
-After setup, run:
+## 7. Validation
 
 ```powershell
-uv run pytest
+uv run pytest -q
 uv run ruff check .
 uv run ruff format --check .
 ```
 
-The repository should remain green after each implementation step.
+See [TESTING.md](TESTING.md). Unit tests need no credentials or network access.

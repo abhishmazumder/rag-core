@@ -1,113 +1,49 @@
 # Testing Strategy
 
-## Testing philosophy
+Unit tests are deterministic and run without network access, Azure credentials,
+Azure AI Search, or live model calls.
 
-The application layer should be testable without network access or provider credentials.
-
-## 1. Domain tests
-
-Test:
-
-- validation
-- serialization
-- defaults
-- invalid values
-
-These tests must not call external services.
-
-## 2. Adapter unit tests
-
-Mock provider SDK clients.
-
-For example, `OpenAIResponsesChatModel` tests should verify:
-
-1. canonical `ChatRequest` is translated correctly
-2. provider SDK is called correctly
-3. provider response is mapped correctly
-4. provider exceptions are translated appropriately
-
-Do not make these tests depend on real API credentials.
-
-For vector storage, test the provider-neutral document/schema behavior and
-Azure adapter mappings separately. Mock Azure SDK clients in adapter tests.
-Test index provisioning independently from runtime store operations; ordinary
-unit tests must not create an index or require Azure credentials.
-
-## 3. Application tests
-
-Use fakes:
-
-```text
-FakeChatModel
-FakeEmbeddingModel
-FakeVectorStore
+```powershell
+uv run pytest -q
+uv run ruff check .
+uv run ruff format --check .
 ```
 
-Example:
+## 1. Offline unit tests
 
-```text
-RAGPipeline
-    |
-    +-- FakeRetriever
-    +-- FakeChatModel
-```
+- **Domain**: validation, defaults, and serialization of the provider-neutral
+  models; `VectorDocument` with different metadata types; capability contracts.
+  Domain tests import no Azure or model-provider SDK types.
+- **Infrastructure**: mock SDK clients to verify mapping boundaries: index
+  definition and provisioning, `AzureAISearchVectorStore` document and search
+  mapping, each Foundry integration's request/response mapping, and Azure Identity
+  setup. SDK objects must not escape infrastructure.
+- **Application**: use fakes or mocks for `EmbeddingModel`, `ResponseModel`, and
+  the store. Cover retrieval for every search method (including that embedding is
+  called only for vector and hybrid), chunking, and RAG generation including
+  insufficient-evidence behavior.
+- **Composition and configuration**: settings load without credentials; factories
+  validate configuration.
+- **Example API**: FastAPI `TestClient` with dependency overrides. Cover request
+  validation, response shapes, routing, ingestion behavior in `POST /documents`, and
+  that `/query` forwards `method`. No Azure service is contacted.
 
-This allows deterministic tests.
+Use `Settings(_env_file=None)` in tests that must not read a local `.env`.
 
-## 4. Integration tests
+## 2. Azure-backed validation
 
-Keep real-provider tests separate.
+Real Azure checks are manual and opt-in, separate from the unit suite. They need
+Azure Identity sign-in, network access, a development Search service, and
+configured Foundry deployments. The next planned one is the end-to-end smoke test in
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). No automated integration suite
+exists yet.
 
-They may require:
+## 3. Evaluation
 
-- credentials
-- network
-- development Azure AI Search index
-- OpenAI access
+Evaluate retrieval relevance and scope isolation separately from generation. For
+RAG, verify grounded answers, evidence references, and insufficient-evidence
+behavior. This is planned work.
 
-Mark or organize them so normal unit-test execution does not require cloud access.
-For Azure AI Search, an explicit integration test may provision a clean
-development index using the setup script before exercising the runtime store.
+## 4. Regression rule
 
-## 5. Retrieval evaluation
-
-Evaluation is different from unit testing.
-
-A retrieval evaluation dataset should contain:
-
-- query
-- expected relevant evidence
-- expected source/chunk
-- optional acceptable alternatives
-
-Measure retrieval behavior rather than relying only on manual inspection.
-
-## 6. RAG evaluation
-
-Test:
-
-### Grounded question
-
-Evidence contains the answer.
-
-Expected:
-
-- answer uses evidence
-- citations/evidence references are present
-
-### Unsupported question
-
-Evidence does not contain enough information.
-
-Expected:
-
-- model is instructed to state insufficiency
-- no fabricated evidence
-
-### Scope isolation
-
-When a retrieval scope is supplied, results outside that scope must not appear.
-
-## 7. Regression rule
-
-When a bug is fixed, add a regression test before or with the fix.
+When a bug is fixed, add a regression test with the fix.
