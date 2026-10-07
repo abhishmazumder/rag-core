@@ -19,6 +19,7 @@ from rag_core.api.schemas import (
     IndexSetupResponse,
     IngestDocumentRequest,
     IngestDocumentResponse,
+    IngestedChunk,
     QueryChunk,
     QueryRequest,
     QueryResponse,
@@ -75,7 +76,7 @@ def ingest_document_endpoint(
     )
     if not chunk_texts:
         return IngestDocumentResponse(
-            candidate_id=request.candidate_id, document_id=document_id, chunk_ids=[]
+            candidate_id=request.candidate_id, document_id=document_id, chunks=[]
         )
 
     embeddings = embedding_model.embed(EmbeddingRequest(texts=chunk_texts)).embeddings
@@ -115,7 +116,10 @@ def ingest_document_endpoint(
     return IngestDocumentResponse(
         candidate_id=request.candidate_id,
         document_id=document_id,
-        chunk_ids=[document.id for document in documents],
+        chunks=[
+            IngestedChunk(id=document.id, chunk_index=document.chunk_index, text=document.text)
+            for document in documents
+        ],
     )
 
 

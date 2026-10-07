@@ -12,10 +12,16 @@ class IngestDocumentRequest(BaseModel):
     text: str = Field(min_length=1)
 
 
+class IngestedChunk(BaseModel):
+    id: str
+    chunk_index: int
+    text: str
+
+
 class IngestDocumentResponse(BaseModel):
     candidate_id: str
     document_id: str
-    chunk_ids: list[str]
+    chunks: list[IngestedChunk]
 
 
 class QueryRequest(BaseModel):

@@ -44,6 +44,16 @@ Evaluate retrieval relevance and scope isolation separately from generation. For
 RAG, verify grounded answers, evidence references, and insufficient-evidence
 behavior. This is planned work.
 
+Phase 1 retrieval evaluation is built from scratch under evaluation/ as an external
+HTTP client of the API (not part of src/rag_core). Its inputs are kept distinct:
+
+- **Source queries** (evaluation/data/source_queries/): the questions to evaluate.
+- **Corpus** (uns/<run_id>/corpus.json): the actual chunks the ingestion pipeline
+  produced, captured by prepare_evaluation_corpus.py.
+- **Evaluation dataset** (uns/<run_id>/evaluation_dataset.json): graded 0-3 relevance
+  judgments for every chunk of the query's candidate, labeled by the configured
+  ResponseModel via uild_evaluation_dataset.py. Review and freeze it before use.
+
 ## 4. Regression rule
 
 When a bug is fixed, add a regression test with the fix.

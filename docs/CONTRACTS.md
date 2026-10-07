@@ -104,7 +104,7 @@ concrete representation of this example and adds `id`, `text`, `embedding`, and
 
 ```text
 IngestDocumentRequest   candidate_id, text                       (both non-empty)
-IngestDocumentResponse  candidate_id, document_id, chunk_ids
+IngestDocumentResponse  candidate_id, document_id, chunks (IngestedChunk: id, chunk_index, text)
 QueryRequest            query, candidate_id, method="vector", top_k=5 (1..50)
 QueryResponse           query, candidate_id, method, answer, chunks
 QueryChunk              id, text, score, metadata

@@ -56,14 +56,19 @@ def test_post_documents_ingests_chunks(overrides, monkeypatch) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"candidate_id", "document_id", "chunk_ids"}
+    assert set(body) == {"candidate_id", "document_id", "chunks"}
     assert body["candidate_id"] == "c1"
     uuid.UUID(body["document_id"])
     chunker.assert_called_once_with("raw text", chunk_size_chars=1000, overlap_chars=100)
     mocks["embedding"].embed.assert_called_once_with(EmbeddingRequest(texts=["x", "y", "z"]))
     mocks["store"].upsert_many.assert_called_once()
     documents = mocks["store"].upsert_many.call_args.args[0]
-    assert [d.id for d in documents] == body["chunk_ids"]
+    assert isinstance(body["chunks"], list)
+    assert all(set(chunk) == {"id", "chunk_index", "text"} for chunk in body["chunks"])
+    assert [c["id"] for c in body["chunks"]] == [d.id for d in documents]
+    assert [c["text"] for c in body["chunks"]] == ["x", "y", "z"]
+    assert [c["chunk_index"] for c in body["chunks"]] == [0, 1, 2]
+    assert "embedding" not in response.text
     assert [d.text for d in documents] == ["x", "y", "z"]
     assert [d.embedding for d in documents] == embeddings
     assert [d.chunk_index for d in documents] == [0, 1, 2]
@@ -84,7 +89,7 @@ def test_post_documents_with_no_chunks_skips_embedding_and_store(overrides, monk
     response = _ingest(client, "   ")
 
     assert response.status_code == 200
-    assert response.json()["chunk_ids"] == []
+    assert response.json()["chunks"] == []
     assert response.json()["candidate_id"] == "c1"
     mocks["embedding"].embed.assert_not_called()
     mocks["store"].upsert_many.assert_not_called()
@@ -113,12 +118,13 @@ def test_post_documents_chunk_ids_are_deterministic_per_document_id(overrides, m
     repeated = _ingest(client).json()
 
     assert first == repeated
-    assert len(set(first["chunk_ids"])) == 2
-    assert all(chunk_id.startswith("chunk-") for chunk_id in first["chunk_ids"])
+    first_ids = [chunk["id"] for chunk in first["chunks"]]
+    assert len(set(first_ids)) == 2
+    assert all(chunk_id.startswith("chunk-") for chunk_id in first_ids)
     name = json.dumps(
         ["c1", str(uuid.UUID(int=1)), None, "recursive", 1000, 100, 0], separators=(",", ":")
     )
-    assert first["chunk_ids"][0] == f"chunk-{uuid.uuid5(uuid.NAMESPACE_DNS, name)}"
+    assert first_ids[0] == f"chunk-{uuid.uuid5(uuid.NAMESPACE_DNS, name)}"
 
 
 def test_post_documents_generates_new_document_id_per_request(overrides, monkeypatch) -> None:
@@ -130,7 +136,9 @@ def test_post_documents_generates_new_document_id_per_request(overrides, monkeyp
     second = _ingest(client).json()
 
     assert first["document_id"] != second["document_id"]
-    assert set(first["chunk_ids"]).isdisjoint(second["chunk_ids"])
+    first_ids = {chunk["id"] for chunk in first["chunks"]}
+    second_ids = {chunk["id"] for chunk in second["chunks"]}
+    assert first_ids.isdisjoint(second_ids)
 
 
 @pytest.mark.parametrize(

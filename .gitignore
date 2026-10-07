@@ -15,3 +15,11 @@ wheels/
 # Caches
 .pytest_cache/
 .ruff_cache/
+
+# Evaluation data (examples stay tracked)
+evaluation/data/source_documents/*
+!evaluation/data/source_documents/example.json
+evaluation/data/source_queries/*
+!evaluation/data/source_queries/example.json
+evaluation/data/runs/*
+!evaluation/data/runs/.gitkeep

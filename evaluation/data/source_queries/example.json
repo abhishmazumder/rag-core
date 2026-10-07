@@ -1,0 +1,11 @@
+{
+  "version": "v1",
+  "queries": [
+    {
+      "id": "eval-example-001",
+      "query": "What degree did the candidate earn?",
+      "candidate_id": "CAND-EXAMPLE",
+      "answerable": true
+    }
+  ]
+}

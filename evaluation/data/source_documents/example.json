@@ -1,0 +1,18 @@
+{
+  "version": "v1",
+  "candidates": [
+    {
+      "candidate_id": "CAND-EXAMPLE",
+      "documents": [
+        {
+          "document_key": "example_education",
+          "text": "Example document text."
+        },
+        {
+          "document_key": "example_employment",
+          "text": "Example employment document text."
+        }
+      ]
+    }
+  ]
+}
